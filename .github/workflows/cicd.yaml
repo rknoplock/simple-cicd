@@ -1,0 +1,127 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - staging
+      - production
+
+jobs:
+  test:
+    name: Code Tests & Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '14'
+
+      - name: Validate HTML
+        run: npx htmlhint '**/*.html'
+
+  build:
+    name: Build & Push Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Login no Docker Hub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Iniciando o empacotamento da aplicação com Docker
+        run: |
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          BRANCH_NAME=${{ github.ref_name }}
+
+          if [[ "$BRANCH_NAME" == "staging" ]]; then
+            TAG="staging"
+          elif [[ "$BRANCH_NAME" == "production" ]]; then
+            TAG="production"
+          else
+            echo "Branch inválida para deploy."
+            exit 1
+          fi
+
+          echo "Construindo imagem ${{ secrets.DOCKER_USERNAME }}/$REPO_NAME:$TAG"
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/$REPO_NAME:$TAG .
+
+      - name: Iniciando o envio da imagem para o DockerHub
+        run: |
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          BRANCH_NAME=${{ github.ref_name }}
+
+          if [[ "$BRANCH_NAME" == "staging" ]]; then
+            TAG="staging"
+          elif [[ "$BRANCH_NAME" == "production" ]]; then
+            TAG="production"
+          else
+            echo "Branch inválida para deploy."
+            exit 1
+          fi
+
+          docker push ${{ secrets.DOCKER_USERNAME }}/$REPO_NAME:$TAG
+
+  release:
+    name: Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Criando Tag e Release
+        run: |
+          TZ="America/Sao_Paulo"
+          export TZ
+
+          BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/\//-/g')
+          TAG_NAME="${BRANCH_NAME}-$(date +'%Y-%m-%d-%H%M')"
+          RELEASE_TITLE="Release ${BRANCH_NAME} - $(date +'%Y-%m-%d %H:%M')"
+
+          echo "Criando tag e release: $TAG_NAME"
+
+          git tag $TAG_NAME
+          git push origin $TAG_NAME
+
+          gh release create $TAG_NAME --title "$RELEASE_TITLE" --notes "Gerado automaticamente pelo CI/CD"
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    name: Deploy no Kubernetes
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Configurar acesso ao cluster
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DATA }}"
+
+      - name: Restart do Deployment
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+            NAMESPACE="staging"
+          elif [[ "${{ github.ref }}" == "refs/heads/production" ]]; then
+            NAMESPACE="production"
+          else
+            echo "Branch não configurada para deploy automático."
+            exit 1
+          fi
+
+          DEPLOYMENT_NAME="${{ github.event.repository.name }}"
+
+          echo "Restartando o deployment: $DEPLOYMENT_NAME no namespace $NAMESPACE"
+          kubectl rollout restart deployment "$DEPLOYMENT_NAME" -n "$NAMESPACE"
