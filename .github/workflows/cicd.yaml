@@ -108,7 +108,7 @@ jobs:
       - name: Configurar acesso ao cluster
         run: |
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
+          echo "${{ secrets.KUBECONFIG_DATA }}"
 
       - name: Restart do Deployment
         run: |
