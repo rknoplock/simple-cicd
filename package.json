@@ -1,0 +1,14 @@
+  {
+    "name": "pagina-simples",
+    "version": "1.0.0",
+    "description": "Um site simples para testar o Docker",
+    "main": "index.js",
+    "scripts": {
+      "validate": "npx html-validator --file=src/index.html"
+    },
+    "dependencies": {},
+    "devDependencies": {
+      "html-validator": "^5.1.0"
+    }
+  }
+  
