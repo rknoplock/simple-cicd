@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: simple-cicd-staging
+  namespace: staging  # Namespace configurada para staging
 spec:
   replicas: 1
   selector:
@@ -22,9 +23,45 @@ apiVersion: v1
 kind: Service
 metadata:
   name: simple-cicd-staging-service
+  namespace: staging  # Namespace configurada para staging
 spec:
   selector:
     app: simple-cicd-staging
+  ports:
+    - protocol: TCP
+      port: 80  # Porta do Service
+      targetPort: 8080  # Porta do container
+  type: LoadBalancer # Caso queira expor para fora do cluster, pode ser LoadBalancer ou NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simple-cicd-production
+  namespace: production  # Namespace configurada para production
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simple-cicd-production
+  template:
+    metadata:
+      labels:
+        app: simple-cicd-production
+    spec:
+      containers:
+        - name: simple-cicd-production
+          image: rknoplock/simple-cicd:production
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: simple-cicd-production-service
+  namespace: production  # Namespace configurada para production
+spec:
+  selector:
+    app: simple-cicd-production
   ports:
     - protocol: TCP
       port: 80  # Porta do Service
